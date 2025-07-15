@@ -21,6 +21,7 @@ PROFILES = ["pessoal", "trabalho", "familia"]
 BLOCKLIST_FRIENDLY_NAMES = {
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt": "HaGeZi Pro++",
     "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts": "StevenBlack Hosts",
+    "https://filters.adtidy.org/extension/ublock/filters/118_optimized.txt": "EasyPrivacy"
 }
 
 # --- Armazenamento de Dados em Memória ---
