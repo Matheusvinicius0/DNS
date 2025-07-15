@@ -16,8 +16,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- Constantes e Configurações ---
 UPSTREAM_DNS = "1.1.1.1"
-MAX_LOG_SIZE = 1000  # Aumentado para melhor visualização com perfis
-PROFILES = ["pessoal", "trabalho", "familia"] # Perfis de exemplo
+MAX_LOG_SIZE = 1000
+PROFILES = ["pessoal", "trabalho", "familia"]
 BLOCKLIST_FRIENDLY_NAMES = {
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt": "HaGeZi Pro++",
     "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts": "StevenBlack Hosts",
@@ -100,7 +100,7 @@ async def get_blocklist_stats(profile: str):
 
 @app.get("/api/query-log/{profile:path}")
 async def get_query_log(profile: str):
-    return {"logs": filter_logs_by_profile(list(query_logs), profile)}
+    return {"logs": list(filter_logs_by_profile(query_logs, profile))}
 
 
 # --- Rotas Principais do DNS ---
@@ -145,6 +145,12 @@ async def doh_post(request: Request, profile_name: str):
         return Response(status_code=415, content="Content-Type 'application/dns-message' esperado.")
     
     body = await request.body()
+    
+    # --- CORREÇÃO AQUI ---
+    # Se o corpo estiver vazio, não continue, pois causará um erro de processamento.
+    if not body:
+        return Response(status_code=400, content="O corpo da requisição POST está vazio.")
+        
     try:
         dns_request = DNSRecord.parse(body)
         qname = str(dns_request.q.qname)
