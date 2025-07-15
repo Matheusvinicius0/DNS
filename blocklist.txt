@@ -1,0 +1,7 @@
+doubleclick.net
+googleadservices.com
+googletagservices.com
+analytics.google.com
+ad.doubleclick.net
+static.doubleclick.net
+m.doubleclick.net
