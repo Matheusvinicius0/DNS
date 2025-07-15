@@ -78,7 +78,6 @@
     };
     const fetchAllData = async () => {
       loading.style.display = 'block';
-      // *** MUDANÇA ESTÁ AQUI: Usa o perfil no caminho da URL ***
       try {
         const statsRes = await fetch(`/api/stats/${currentProfile}`);
         const stats = await statsRes.json();
@@ -109,7 +108,6 @@
       loading.style.display = 'none';
     };
     const populateProfiles = async () => {
-      // *** MUDANÇA ESTÁ AQUI: Busca perfis da nova rota da API ***
       try {
         const res = await fetch('/api/profiles');
         const profiles = await res.json();
