@@ -12,10 +12,11 @@ from dnslib import DNSRecord, DNSHeader
 
 # --- Configuração Inicial ---
 app = FastAPI()
+# Monta o diretório 'static' para servir o index.html
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- Constantes e Configurações ---
-UPSTREAM_DNS = "1.1.1.1"
+UPSTREAM_DNS = "1.1.1.1"  # Servidor DNS da Cloudflare
 MAX_LOG_SIZE = 500
 BLOCKLIST_FRIENDLY_NAMES = {
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt": "HaGeZi Pro++",
@@ -30,6 +31,7 @@ query_logs = deque(maxlen=MAX_LOG_SIZE)
 # --- Funções do Servidor ---
 
 async def update_blocklists():
+    """Baixa e processa cada lista de bloqueio do dicionário."""
     print("Atualizando listas de bloqueio...")
     for url, friendly_name in BLOCKLIST_FRIENDLY_NAMES.items():
         if not url.startswith("http"):
@@ -46,6 +48,7 @@ async def update_blocklists():
             print(f"Erro ao baixar a lista '{friendly_name}': {e}")
 
 def check_domain_block(domain: str) -> str | None:
+    """Verifica se o domínio está em alguma lista e retorna a URL da lista."""
     domain_lower = domain.lower().rstrip('.')
     parts = domain_lower.split('.')
     for i in range(len(parts)):
@@ -56,6 +59,7 @@ def check_domain_block(domain: str) -> str | None:
     return None
 
 def log_query(qname: str, status: str, client_ip: str, profile: str = 'Padrão', blocked_by: str = None):
+    """Adiciona um registro de consulta à lista de logs em memória."""
     query_logs.append({
         "timestamp": datetime.now().isoformat(), "qname": qname, "status": status,
         "client_ip": client_ip, "profile": profile, "blocked_by": blocked_by
@@ -72,6 +76,7 @@ async def get_stats(profile: str = 'all'):
     total_queries = len(logs)
     if total_queries == 0:
         return {"total_queries": 0, "blocked_queries": 0, "percent_blocked": 0, "top_queried": [], "top_blocked": [], "top_root": []}
+    
     blocked_queries = sum(1 for log in logs if log['status'] == 'Bloqueado')
     queried_counter = Counter(log['qname'] for log in logs)
     blocked_counter = Counter(log['qname'] for log in logs if log['status'] == 'Bloqueado')
@@ -79,6 +84,7 @@ async def get_stats(profile: str = 'all'):
         parts = domain.split('.')
         return '.'.join(parts[-2:]) if len(parts) >= 2 else domain
     root_counter = Counter(get_root_domain(log['qname']) for log in logs)
+    
     return {
         "total_queries": total_queries, "blocked_queries": blocked_queries,
         "percent_blocked": (blocked_queries / total_queries * 100) if total_queries > 0 else 0,
@@ -101,6 +107,11 @@ async def on_startup(): await update_blocklists()
 
 @app.get("/", response_class=FileResponse, include_in_schema=False)
 async def read_index(): return "static/index.html"
+
+@app.head("/", include_in_schema=False)
+async def head_index():
+    """Manipulador para requisições HEAD para evitar erros 405 no log."""
+    return Response(headers={"content-type": "text/html; charset=utf-8"})
 
 # Manipulador DoH para requisições GET
 @app.get("/dns-query", summary="DNS-over-HTTPS (RFC8484) - GET")
@@ -129,7 +140,7 @@ async def doh_get(request: Request, name: str = Query(...), type: str = Query("A
 @app.post("/dns-query", summary="DNS-over-HTTPS (RFC8484) - POST")
 async def doh_post(request: Request):
     client_ip = request.client.host
-    qname = "Desconhecido" # Valor padrão
+    qname = "Desconhecido"
     if request.headers.get("content-type") != "application/dns-message":
         return Response(status_code=415, content="Content-Type 'application/dns-message' esperado.")
     
@@ -142,7 +153,7 @@ async def doh_post(request: Request):
         if blocking_list_url:
             friendly_name = BLOCKLIST_FRIENDLY_NAMES.get(blocking_list_url, blocking_list_url)
             log_query(qname, "Bloqueado", client_ip, blocked_by=friendly_name)
-            header = DNSHeader(id=dns_request.header.id, qr=1, aa=1, rcode=3) # rcode 3 = NXDOMAIN
+            header = DNSHeader(id=dns_request.header.id, qr=1, aa=1, rcode=3)
             response_record = DNSRecord(header, q=dns_request.q)
             return Response(content=response_record.pack(), media_type="application/dns-message")
 
@@ -153,7 +164,6 @@ async def doh_post(request: Request):
             dns_response, _ = s.recvfrom(4096)
         return Response(content=dns_response, media_type="application/dns-message")
     except Exception as e:
-        # Lógica de log de erro que você pediu
         log_query(qname, "Erro", client_ip, blocked_by=f"Processamento: {e}")
         print(f"Erro ao processar a requisição POST para '{qname}': {e}")
         return Response(status_code=500, content="Erro interno do servidor.")
