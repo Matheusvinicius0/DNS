@@ -22,7 +22,8 @@ PROFILES = ["pessoal", "trabalho", "familia"] # Perfis de exemplo
 BLOCKLIST_FRIENDLY_NAMES = {
     "https://easylist-downloads.adblockplus.org/easyprivacy.txt": "EasyPrivacy List",
     "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts": "StevenBlack Hosts",
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt": "HaGeZi Pro++"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt": "HaGeZi Pro++",
+    "https://filters.adtidy.org/extension/ublock/filters/122_optimized.txt" : "Fanboy's Annoyances"
 }
 
 # --- Armazenamento de Dados em Memória ---
