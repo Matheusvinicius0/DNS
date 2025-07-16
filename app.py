@@ -12,16 +12,17 @@ from dnslib import DNSRecord, DNSHeader
 
 # --- Configuração Inicial ---
 app = FastAPI()
+# Monta o diretório 'static' para servir o index.html
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- Constantes e Configurações ---
-UPSTREAM_DNS = "1.1.1.1"
+UPSTREAM_DNS = "1.1.1.1"  # Servidor DNS da Cloudflare
 MAX_LOG_SIZE = 1000
-PROFILES = ["pessoal", "trabalho", "familia"]
+PROFILES = ["pessoal", "trabalho", "familia"] # Perfis de exemplo
 BLOCKLIST_FRIENDLY_NAMES = {
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt": "HaGeZi Pro++",
+    "https://easylist-downloads.adblockplus.org/easyprivacy.txt": "EasyPrivacy List",
     "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts": "StevenBlack Hosts",
-    "https://filters.adtidy.org/extension/ublock/filters/118_optimized.txt": "EasyPrivacy"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt": "HaGeZi Pro++"
 }
 
 # --- Armazenamento de Dados em Memória ---
@@ -32,21 +33,46 @@ query_logs = deque(maxlen=MAX_LOG_SIZE)
 # --- Funções do Servidor ---
 
 async def update_blocklists():
+    """Baixa e processa CADA lista de bloqueio, adaptando-se ao formato."""
     print("Atualizando listas de bloqueio...")
     for url, friendly_name in BLOCKLIST_FRIENDLY_NAMES.items():
-        if not url.startswith("http"): continue
+        print(f"- Processando '{friendly_name}'...")
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.get(url)
                 response.raise_for_status()
             
-            new_domains = {parts[1].strip().lower() for line in response.text.splitlines() if line.strip() and not line.startswith("#") and len(parts := line.split()) >= 2 and parts[0] in ("0.0.0.0", "127.0.0.1")}
+            new_domains = set()
+            lines = response.text.splitlines()
+            
+            for line in lines:
+                # Ignora comentários, linhas vazias e regras de exceção/permissão
+                if not line.strip() or line.startswith('!') or line.startswith('#') or '@@' in line:
+                    continue
+
+                # Formato Hosts (ex: 0.0.0.0 example.com)
+                if line.startswith('0.0.0.0') or line.startswith('127.0.0.1'):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        new_domains.add(parts[1].strip().lower())
+                
+                # Formato Adblock de Bloqueio de Domínio (ex: ||example.com^)
+                elif line.startswith('||') and '^' in line:
+                    # Extrai o domínio entre '||' e '^'
+                    domain = line.split('||')[1].split('^')[0]
+                    # Garante que é um domínio, não um caminho de URL
+                    if '/' not in domain and '*' not in domain:
+                        new_domains.add(domain.strip().lower())
+
             blocklists_sets[url] = new_domains
-            print(f"- '{friendly_name}' atualizada com {len(new_domains)} domínios.")
+            print(f"  -> '{friendly_name}' atualizada com {len(new_domains)} domínios extraídos.")
         except httpx.RequestError as e:
             print(f"Erro ao baixar a lista '{friendly_name}': {e}")
+        except Exception as e:
+            print(f"Erro ao processar a lista '{friendly_name}': {e}")
 
 def check_domain_block(domain: str) -> str | None:
+    """Verifica se o domínio está em alguma lista e retorna a URL da lista."""
     domain_lower = domain.lower().rstrip('.')
     parts = domain_lower.split('.')
     for i in range(len(parts)):
@@ -57,6 +83,7 @@ def check_domain_block(domain: str) -> str | None:
     return None
 
 def log_query(qname: str, status: str, client_ip: str, profile: str, blocked_by: str = None):
+    """Adiciona um registro de consulta à lista de logs em memória."""
     query_logs.append({
         "timestamp": datetime.now().isoformat(), "qname": qname, "status": status,
         "client_ip": client_ip, "profile": profile, "blocked_by": blocked_by
@@ -146,9 +173,6 @@ async def doh_post(request: Request, profile_name: str):
         return Response(status_code=415, content="Content-Type 'application/dns-message' esperado.")
     
     body = await request.body()
-    
-    # --- CORREÇÃO AQUI ---
-    # Se o corpo estiver vazio, não continue, pois causará um erro de processamento.
     if not body:
         return Response(status_code=400, content="O corpo da requisição POST está vazio.")
         
